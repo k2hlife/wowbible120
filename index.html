@@ -1190,6 +1190,19 @@ function saveSettings() {
 initCurrentIdx();
 render();
 
+// 자정 자동 갱신
+function scheduleNextMidnight() {
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+  const msUntilMidnight = midnight - now;
+  setTimeout(() => {
+    initCurrentIdx();
+    render();
+    scheduleNextMidnight(); // 다음 자정도 예약
+  }, msUntilMidnight);
+}
+scheduleNextMidnight();
+
 // 카드 더블탭 확대/축소
 (function() {
   let lastTap = 0;
