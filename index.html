@@ -69,8 +69,13 @@ body{font-family:var(--font);background:linear-gradient(160deg,#e8eef8 0%,#f2eef
 .nav-btn.today-btn:hover{filter:brightness(1.06);}
 
 /* ── 메인 카드 ── */
-.card{background:linear-gradient(145deg,var(--gc1,#ffb3c6),var(--gc2,#ff85a1));border-radius:var(--radius);padding:32px 24px 28px;position:relative;overflow:hidden;animation:cardIn 0.4s cubic-bezier(0.34,1.4,0.64,1);text-align:center;min-height:300px;display:flex;flex-direction:column;justify-content:flex-start;box-shadow:0 12px 40px rgba(0,0,0,0.15);}
+.card{background:linear-gradient(145deg,var(--gc1,#ffb3c6),var(--gc2,#ff85a1));border-radius:var(--radius);padding:32px 24px 28px;position:relative;overflow:hidden;text-align:center;min-height:300px;display:flex;flex-direction:column;justify-content:flex-start;box-shadow:0 12px 40px rgba(0,0,0,0.15);}
 @keyframes cardIn{from{opacity:0;transform:scale(0.94);}to{opacity:1;transform:scale(1);}}
+/* 슬라이드 전환용 */
+#card-area{overflow:hidden;position:relative;}
+#card-area .card-slide-wrap{display:flex;width:100%;}
+#card-area .card-slide-wrap .card,
+#card-area .card-slide-wrap .card-rest{flex:0 0 100%;min-width:100%;}
 .card::before{content:'';position:absolute;top:-60px;right:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,0.18);pointer-events:none;}
 .card::after{content:'';position:absolute;bottom:-80px;left:-50px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,0.12);pointer-events:none;}
 
@@ -105,7 +110,7 @@ body{font-family:var(--font);background:linear-gradient(160deg,#e8eef8 0%,#f2eef
 .card-page{font-size:22px;font-weight:600;color:var(--dark,#3d1a26);opacity:0.45;letter-spacing:3px;}
 
 /* 휴무일 카드 */
-.card-rest{background:linear-gradient(145deg,#c8c8e8,#a0a0d0);border-radius:var(--radius);padding:40px 28px;text-align:center;animation:cardIn 0.4s ease;min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 12px 36px rgba(0,0,0,0.12);position:relative;overflow:hidden;}
+.card-rest{background:linear-gradient(145deg,#c8c8e8,#a0a0d0);border-radius:var(--radius);padding:40px 28px;text-align:center;min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 12px 36px rgba(0,0,0,0.12);position:relative;overflow:hidden;}
 .card-rest::before{content:'';position:absolute;top:-50px;right:-50px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,0.18);}
 .rest-emoji{font-size:48px;margin-bottom:14px;}
 .rest-title{font-size:24px;font-weight:800;color:#1a1a3e;margin-bottom:6px;}
@@ -605,14 +610,71 @@ function todayKey() {
   return dateKey(new Date());
 }
 
-function navigate(delta) {
+let _sliding = false;
+
+function navigate(delta, animate) {
   const ni = currentIdx + delta;
   if (ni < 0 || ni >= CYCLE.allDates.length) return;
-  currentIdx = ni;
-  // 줌 초기화
-  const ca = document.getElementById('card-area');
-  if (ca) { ca.style.transform = 'scale(1)'; ca.style.zIndex = ''; }
-  render();
+  if (_sliding) return;
+
+  if (animate) {
+    _sliding = true;
+    const cardArea = document.getElementById('card-area');
+
+    // 현재 카드 HTML 저장
+    const oldHTML = cardArea.innerHTML;
+
+    // 새 카드를 오프스크린 div에서 렌더
+    const offscreen = document.createElement('div');
+    offscreen.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:' + cardArea.offsetWidth + 'px;visibility:hidden;';
+    document.body.appendChild(offscreen);
+    const savedIdx = currentIdx;
+    currentIdx = ni;
+    applyPalette(getPalette(CYCLE.cal[dateKey(CYCLE.allDates[ni])]));
+    // renderCardOnly를 offscreen에 적용
+    offscreen.innerHTML = '';
+    renderCardInto(offscreen);
+    const newHTML = offscreen.innerHTML;
+    offscreen.remove();
+    currentIdx = savedIdx; // 아직 savedIdx
+
+    // 두 카드 나란히 배치
+    const goRight = delta > 0;
+    cardArea.style.overflow = 'hidden';
+    cardArea.innerHTML = `<div style="display:flex;width:200%;transform:translateX(${goRight ? '0%' : '-50%'});" id="_slide_wrap">
+      <div style="width:50%;flex-shrink:0;">${goRight ? oldHTML : newHTML}</div>
+      <div style="width:50%;flex-shrink:0;">${goRight ? newHTML : oldHTML}</div>
+    </div>`;
+
+    const wrap = document.getElementById('_slide_wrap');
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        wrap.style.transition = 'transform 0.32s cubic-bezier(0.4,0,0.2,1)';
+        wrap.style.transform = `translateX(${goRight ? '-50%' : '0%'})`;
+        wrap.addEventListener('transitionend', () => {
+          currentIdx = ni;
+          _sliding = false;
+          render();
+        }, { once: true });
+      });
+    });
+
+    // 날짜·버튼 즉시 업데이트
+    const d = CYCLE.allDates[ni];
+    document.getElementById('date-display').textContent =
+      `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${WEEK_KO[d.getDay()]})`;
+    document.getElementById('btn-prev').disabled = ni <= 0;
+    document.getElementById('btn-next').disabled = ni >= CYCLE.allDates.length - 1;
+    document.getElementById('btn-minus10').disabled = ni < 10;
+    document.getElementById('btn-plus10').disabled = ni > CYCLE.allDates.length - 11;
+
+  } else {
+    currentIdx = ni;
+    const ca = document.getElementById('card-area');
+    if (ca) { ca.style.transform = 'scale(1)'; ca.style.zIndex = ''; }
+    render();
+  }
 }
 
 function goToday() { initCurrentIdx(); render(); }
@@ -699,6 +761,35 @@ function buildPassageHTML(passage, dayNum) {
 // ════════════════════════════════════════════════
 // 렌더
 // ════════════════════════════════════════════════
+// 지정 컨테이너에 현재 currentIdx 카드 렌더 (슬라이드용)
+function renderCardInto(container) {
+  const d = CYCLE.allDates[currentIdx];
+  const k = dateKey(d);
+  const entry = CYCLE.cal[k];
+  if (!entry || entry.type === 'autorest') {
+    container.innerHTML = `<div class="card-rest"><div class="rest-emoji">😌</div><div class="rest-title">자유 휴무</div><div class="rest-sub">오늘은 쉬어가는 날 🌿</div></div>`;
+  } else if (entry.type === 'rest') {
+    container.innerHTML = `<div class="card-rest"><div class="rest-emoji">${entry.emoji}</div><div class="rest-title">${entry.name}</div><div class="rest-sub">오늘은 쉬어가는 날 🌿</div></div>`;
+  } else {
+    const dok = DOK_LABELS[entry.dok] || '';
+    if (entry.sub !== undefined) {
+      const badge = `${dok} · ${getTestament(entry.day)}`;
+      container.innerHTML = `<div class="card"><div class="card-badge">${badge}</div><div class="card-day-label">DAY</div><div class="card-day-num-wrap"><div class="card-day-num">${entry.day}<span class="day-sub">#${entry.sub}</span></div></div><div class="card-divider"></div>${buildPassageHTML(entry.passage, entry.day)}<div class="card-page-wrap"><div class="card-page">P ${entry.page.replace('P','').trim()}</div></div></div>`;
+    } else if (entry.label) {
+      const badge = `${dok} · 구약`;
+      container.innerHTML = `<div class="card"><div class="card-badge">${badge}</div><div class="card-day-label">합본 DAY</div><div class="card-day-num" style="font-size:52px;letter-spacing:-2px">80·81</div><div class="card-divider"></div>${buildPassageHTML(entry.passage, '80')}<div class="card-page-wrap"><div class="card-page">P ${entry.page.replace('P','').trim()}</div></div></div>`;
+    } else {
+      const badge = `${dok} · ${getTestament(entry.day)}`;
+      container.innerHTML = `<div class="card"><div class="card-badge">${badge}</div><div class="card-day-label">DAY</div><div class="card-day-num">${entry.day}</div><div class="card-divider"></div>${buildPassageHTML(entry.passage, entry.day)}<div class="card-page-wrap"><div class="card-page">P ${entry.page.replace('P','').trim()}</div></div></div>`;
+    }
+  }
+}
+
+// 카드 HTML만 cardArea에 렌더 (슬라이드 전환용)
+function renderCardOnly() {
+  renderCardInto(document.getElementById('card-area'));
+}
+
 function render() {
   const d = CYCLE.allDates[currentIdx];
   const k = dateKey(d);
@@ -1203,13 +1294,33 @@ function scheduleNextMidnight() {
 }
 scheduleNextMidnight();
 
-// 카드 더블탭 확대/축소
+// 카드 더블탭 확대/축소 + 좌우 스와이프 이전/다음
 (function() {
   let lastTap = 0;
   let zoomed = false;
+  let touchStartX = 0;
+  let touchStartY = 0;
   const cardArea = document.getElementById('card-area');
+
+  cardArea.addEventListener('touchstart', function(e) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
   cardArea.addEventListener('touchend', function(e) {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
     const now = Date.now();
+
+    // 스와이프: 수평 40px 이상 & 수평이 수직보다 클 때
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0) navigate(+1, true); // 왼쪽 → 다음날
+      else        navigate(-1, true); // 오른쪽 → 이전날
+      lastTap = 0;
+      return;
+    }
+
+    // 더블탭 확대/축소
     if (now - lastTap < 300) {
       e.preventDefault();
       zoomed = !zoomed;
