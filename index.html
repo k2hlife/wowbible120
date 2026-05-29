@@ -490,40 +490,24 @@ const DOK_LABELS = ['1독','2독','3독'];
 // ════════════════════════════════════════════════
 // 설정 (localStorage)
 // ════════════════════════════════════════════════
-// ★ 휴일 업데이트할 때마다 HOLIDAYS_VERSION 숫자를 +1 올리세요.
-//    그러면 셀원분들 폰에서 다음에 앱 열 때 자동으로 새 휴일이 적용됩니다.
-const HOLIDAYS_VERSION = 2;
-const DEFAULT_HOLIDAYS = {
-  '2026-03-01': '삼일절',
-  '2026-05-05': '어린이날',
-  '2026-05-30': '해피가족캠프',
-};
-
 function loadConfig() {
   try {
     const s = localStorage.getItem('bible_config');
-    if (s) {
-      const cfg = JSON.parse(s);
-      // 휴일 버전이 낮으면 자동으로 최신 휴일 목록으로 덮어쓰기
-      if ((cfg.holidaysVersion || 0) < HOLIDAYS_VERSION) {
-        cfg.holidays = { ...DEFAULT_HOLIDAYS };
-        cfg.holidaysVersion = HOLIDAYS_VERSION;
-        localStorage.setItem('bible_config', JSON.stringify(cfg));
-      }
-      return cfg;
-    }
+    if (s) return JSON.parse(s);
   } catch(e){}
   // 기본값: 2025년 사이클, 현재 회차 휴무일
   return {
     year: 2025,
     pin: '0000',
-    holidaysVersion: HOLIDAYS_VERSION,
-    holidays: { ...DEFAULT_HOLIDAYS },
+    holidays: {
+      '2026-03-01': '삼일절',
+      '2026-05-05': '어린이날',
+      '2026-05-30': '해피가족캠프',
+    }
   };
 }
 
 function saveConfig(cfg) {
-  cfg.holidaysVersion = HOLIDAYS_VERSION;
   localStorage.setItem('bible_config', JSON.stringify(cfg));
 }
 
@@ -989,19 +973,12 @@ function switchTab(tab) {
   }
   if (tab === 'schedule') {
     renderSchedule();
-    // DOM 페인트 완료 후 정확한 위치로 스크롤 (RAF 두 번 중첩으로 안정성 확보)
+    // 오늘 날짜가 바로 화면에 나타나도록 즉시 스크롤
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const todayRow = document.querySelector('.sched-row.is-today');
         if (todayRow) {
-          // sticky 헤더 높이를 고려해서 오늘 행이 화면 중앙에 오도록 좌표 계산
-          const headerEl = document.querySelector('.header');
-          const topBarEl = document.querySelector('.top-bar');
-          const stickyH = (headerEl ? headerEl.offsetHeight : 0) + (topBarEl ? topBarEl.offsetHeight : 0);
-          const rect = todayRow.getBoundingClientRect();
-          const visibleCenter = stickyH + (window.innerHeight - stickyH) / 2;
-          const targetY = window.scrollY + rect.top - visibleCenter + rect.height / 2;
-          window.scrollTo({top: Math.max(0, targetY), behavior: 'auto'});
+          todayRow.scrollIntoView({behavior:'auto', block:'center'});
         }
       });
     });
@@ -1358,32 +1335,6 @@ scheduleNextMidnight();
     lastTap = now;
   }, { passive: false });
 })();
-
-// ════════════════════════════════════════════════
-// 자동 업데이트 체크 (서비스워커 없이)
-// ════════════════════════════════════════════════
-// 업데이트할 때마다 APP_VERSION을 바꾸세요. (날짜.번호 형식 권장)
-const APP_VERSION = '2026.05.30.02';
-
-// 페이지 로드 후 백그라운드에서 새 버전 있는지 확인
-window.addEventListener('load', () => {
-  setTimeout(async () => {
-    try {
-      // 캐시 우회해서 자기 자신 다시 받기
-      const url = location.pathname + '?_v=' + Date.now();
-      const response = await fetch(url, { cache: 'no-store' });
-      const newHtml = await response.text();
-      const match = newHtml.match(/APP_VERSION = '([^']+)'/);
-      if (match && match[1] && match[1] !== APP_VERSION) {
-        // 새 버전 있음 → 자동으로 새로고침
-        console.log('새 버전 감지:', match[1]);
-        location.reload();
-      }
-    } catch(e) {
-      // 오프라인이거나 fetch 실패 → 그냥 넘어감
-    }
-  }, 3000); // 3초 후에 체크 (앱 로딩 방해 안 하려고)
-});
 </script>
 </body>
 </html>
