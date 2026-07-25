@@ -485,29 +485,44 @@ const DATA = [
 const PALETTES = ['p0','p1','p2','p3','p4','p5','p6','p7','p8','p9'];
 const WEEK_KO = ['일','월','화','수','목','금','토'];
 const MONTH_KO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
-const DOK_LABELS = ['1독','2독','3독'];
+const DOK_LABELS = ['1독','2독','3독','4독','5독'];
 
 // ════════════════════════════════════════════════
 // 설정 (localStorage)
 // ════════════════════════════════════════════════
+// ★ 휴일 바꿀 때마다 이 숫자를 +1 올리세요
+const HOLIDAYS_VERSION = 3;
+const DEFAULT_HOLIDAYS = {
+  '2026-03-01': '삼일절',
+  '2026-05-05': '어린이날',
+  '2026-05-30': '해피가족캠프',
+  '2026-08-15': '광복절',
+  '2026-09-25': '추석',
+};
+
 function loadConfig() {
   try {
     const s = localStorage.getItem('bible_config');
-    if (s) return JSON.parse(s);
+    if (s) {
+      const cfg = JSON.parse(s);
+      if ((cfg.holidaysVersion || 0) < HOLIDAYS_VERSION) {
+        cfg.holidays = { ...DEFAULT_HOLIDAYS };
+        cfg.holidaysVersion = HOLIDAYS_VERSION;
+        localStorage.setItem('bible_config', JSON.stringify(cfg));
+      }
+      return cfg;
+    }
   } catch(e){}
-  // 기본값: 2025년 사이클, 현재 회차 휴무일
   return {
     year: 2025,
     pin: '0000',
-    holidays: {
-      '2026-03-01': '삼일절',
-      '2026-05-05': '어린이날',
-      '2026-05-30': '해피가족캠프',
-    }
+    holidaysVersion: HOLIDAYS_VERSION,
+    holidays: { ...DEFAULT_HOLIDAYS },
   };
 }
 
 function saveConfig(cfg) {
+  cfg.holidaysVersion = HOLIDAYS_VERSION;
   localStorage.setItem('bible_config', JSON.stringify(cfg));
 }
 
@@ -518,18 +533,22 @@ let CFG = loadConfig();
 // ════════════════════════════════════════════════
 function buildCycle(cfg) {
   const year = cfg.year;
-  // 3독 구간 고정:
+  // 5독 구간:
   // 1독: year년   12/1  ~ (year+1)년 3/31
   // 2독: (year+1)년 4/1  ~ (year+1)년 7/31
   // 3독: (year+1)년 8/1  ~ (year+1)년 11/30
+  // 4독: (year+1)년 12/1 ~ (year+2)년 3/31
+  // 5독: (year+2)년 4/1  ~ (year+2)년 7/31
   const dokRanges = [
     { dok:0, start: new Date(year,   11, 1), end: new Date(year+1, 2, 31) },
     { dok:1, start: new Date(year+1,  3, 1), end: new Date(year+1, 6, 31) },
     { dok:2, start: new Date(year+1,  7, 1), end: new Date(year+1, 10, 30) },
+    { dok:3, start: new Date(year+1, 11, 1), end: new Date(year+2, 2, 31) },
+    { dok:4, start: new Date(year+2,  3, 1), end: new Date(year+2, 6, 31) },
   ];
 
   const cycleStart = dokRanges[0].start;
-  const cycleEnd   = dokRanges[2].end;
+  const cycleEnd   = dokRanges[4].end;
 
   // 전체 날짜 목록
   const allDates = [];
@@ -586,6 +605,7 @@ function buildCycle(cfg) {
 function restEmoji(name) {
   if (name.includes('어린이')) return '🎠';
   if (name.includes('현충')) return '🕊️';
+  if (name.includes('광복')) return '🌟';
   if (name.includes('크리스마스')) return '🎄';
   if (name.includes('추석') || name.includes('설')) return '🎑';
   return '🌿';
@@ -1082,10 +1102,13 @@ function updateCycleInfo() {
   const total = isLeap ? 366 : 365;
   const rest = total - 360;
   const y2 = y + 1;
+  const y3 = y + 2;
   document.getElementById('cycle-info').innerHTML =
     `📅 1독: ${y}/12/1 ~ ${y2}/3/31<br>` +
     `📅 2독: ${y2}/4/1 ~ ${y2}/7/31<br>` +
-    `📅 3독: ${y2}/8/1 ~ ${y2}/11/30`;
+    `📅 3독: ${y2}/8/1 ~ ${y2}/11/30<br>` +
+    `📅 4독: ${y2}/12/1 ~ ${y3}/3/31<br>` +
+    `📅 5독: ${y3}/4/1 ~ ${y3}/7/31`;
 }
 document.getElementById('cfg-year').addEventListener('input', updateCycleInfo);
 
@@ -1133,7 +1156,7 @@ function renderCalendar() {
 
   // 독별 휴무 잔여 현황 표시
   let quotaHtml = '';
-  const dokNames = ['1독 (12~3월)', '2독 (4~7월)', '3독 (8~11월)'];
+  const dokNames = ['1독 (12~3월)', '2독 (4~7월)', '3독 (8~11월)', '4독 (12~3월)', '5독 (4~7월)'];
   for (let dok = 0; dok < 3; dok++) {
     const max = previewCycle.dokMaxRest[dok];
     const used = previewCycle.dokHolidayCount[dok];
@@ -1201,7 +1224,7 @@ function toggleHoliday(k, label) {
   const maxRest = previewCycle.dokMaxRest[targetDok];
   const curCount = previewCycle.dokHolidayCount[targetDok];
   if (curCount >= maxRest) {
-    const dokName = ['1독(12~3월)', '2독(4~7월)', '3독(8~11월)'][targetDok];
+    const dokName = ['1독(12~3월)', '2독(4~7월)', '3독(8~11월)', '4독(12~3월)', '5독(4~7월)'][targetDok];
     alert(`⚠️ ${dokName} 구간은 최대 ${maxRest}일만 휴무 지정 가능합니다.\n(현재 ${curCount}일 지정됨)`);
     return;
   }
